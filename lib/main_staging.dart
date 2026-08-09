@@ -7,14 +7,7 @@
 /// a developer machine.
 library;
 
-import 'package:flutter/widgets.dart';
-
-import 'app.dart';
-import 'config/app_config.dart';
+import 'bootstrap.dart';
 import 'config/app_environment.dart';
 
-void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  final config = AppConfig.resolve(AppEnvironment.staging);
-  runApp(NuviLifestyleApp(config: config));
-}
+void main() => bootstrap(AppEnvironment.staging);
