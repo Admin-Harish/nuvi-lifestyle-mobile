@@ -87,15 +87,15 @@ jobs:
             -t lib/main_dev.dart \
             --dart-define=API_BASE_URL=http://localhost:8000
 
-      - name: A staging build without API_BASE_URL must fail
+      - name: Assert the shipping-build API_BASE_URL guard is present in source
         run: |
-          # The guarantee: a shipped build can never silently point at a
-          # developer machine. AppConfig.resolve throws, so the build's
-          # const-evaluation of the missing define surfaces at startup — this
-          # step asserts the entrypoint exists and the guard is present in
-          # source, since the throw is a runtime one.
+          # A static check, not a build. AppConfig.resolve throws at *startup*,
+          # not at compile time, so a staging build with no API_BASE_URL still
+          # compiles — it just refuses to run. The behaviour itself is covered
+          # by the unit tests in the analyze-and-test job; this step only
+          # catches someone deleting the guard.
           if ! grep -q 'API_BASE_URL was not provided' lib/config/app_config.dart; then
             echo "::error::The staging/production API_BASE_URL guard is missing."
             exit 1
           fi
-          echo "Shipping-build guard present."
+          echo "Shipping-build guard present in source."
