@@ -5,10 +5,12 @@ India.
 
 **This is a greenfield project.** It shares no code with the existing NUVI app.
 
-**Phase 0 status: bootstrap only.** There are no product screens — no food
-catalogue, no menus, no goals. What exists is the flavor plumbing, a
-configurable API base URL, theme-token stubs, and CI. This is not production
-ready and is not claimed to be.
+**Phase 1 status: sign-in, goals and consent.** Three screens on top of the
+Phase 0 shell. There is still **no food catalogue, no menus and no plan** —
+those are Phase 2. Clinical goals are shown but cannot be selected: the server
+gates them, and the app renders that decision rather than making one. Consent
+copy is still `draft` and is labelled as such wherever it appears. This is not
+production ready and is not claimed to be.
 
 ---
 
@@ -116,7 +118,23 @@ palette 7B would have to undo.
 lib/
   main.dart           delegates to the dev entrypoint
   main_dev.dart       main_staging.dart       main_prod.dart
-  app.dart            application shell and the Phase 0 bootstrap screen
+  app.dart            application shell: sign-in when signed out, tabs when in
+  bootstrap.dart      wiring shared by all three flavor entrypoints
+  api/
+    nuvi_api.dart          NuviApi interface + HttpNuviApi (dart:io)
+    models.dart            wire models
+  auth/
+    session.dart           session state; collapses every credential failure
+                           to one message, mirroring the API
+    login_screen.dart      sign in, forgot password
+    register_screen.dart   create account
+    verify_email_screen.dart  redeem a one-time code
+  goals/
+    goal_catalogue_screen.dart   wellness selectable, gated goals shown inert
+  consent/
+    consent_screen.dart    five separate switches, draft copy labelled
+  widgets/
+    nuvi_scaffold.dart     shared page, notice, field and button
   config/
     app_environment.dart   the three flavors
     app_config.dart        API base URL resolution and its guards
@@ -133,7 +151,7 @@ test/
 
 ## Guardrails in force
 
-Phase 0 deliberately does not include any product screen or feature domain, no
+Phase 1 deliberately does not include the food catalogue, menus or plans, no
 payments, AI, gated clinical content or health-platform sync. CI asserts there
 is no hardcoded local address outside the development fallback, and that
 `.env.example` contains names only.
