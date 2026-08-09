@@ -18,6 +18,12 @@ class FakeNuviApi implements NuviApi {
     this.user,
     this.goalsFailure,
     this.delay,
+    this.menuLibrary_,
+    this.menuFailure,
+    this.plans = const [],
+    this.plansFailure,
+    this.planDetail,
+    this.planDetailFailure,
   });
 
   /// Makes a call take a frame, so a test can observe the in-flight state.
@@ -30,6 +36,15 @@ class FakeNuviApi implements NuviApi {
   final Object? verifyFailure;
   final Object? goalsFailure;
   final Object? consentWriteFailure;
+
+  /// Phase 2 fixtures.
+  MenuLibrary? menuLibrary_;
+  /// Cleared by a test to model a retry that succeeds.
+  Object? menuFailure;
+  List<MealPlanSummary> plans;
+  Object? plansFailure;
+  final MealPlanDetail? planDetail;
+  final Object? planDetailFailure;
 
   List<GoalCatalogueEntry> goals;
   List<ConsentSummaryEntry> consents;
@@ -124,6 +139,45 @@ class FakeNuviApi implements NuviApi {
               : entry,
         )
         .toList(growable: false);
+  }
+
+  @override
+  Future<MenuLibrary> menuLibrary({required String goalKey}) async {
+    calls.add('menuLibrary:$goalKey');
+    // Always yield at least one microtask. Throwing before any await
+    // completes the future before FutureBuilder subscribes, and the
+    // error surfaces as unhandled rather than as an error state.
+    await Future<void>.delayed(delay ?? Duration.zero);
+    if (menuFailure != null) throw menuFailure!;
+    return menuLibrary_ ??
+        MenuLibrary(
+          goalKey: goalKey,
+          days: const [],
+          emptyReason: MenuLibraryEmptyReason.notGenerated,
+          isGated: false,
+        );
+  }
+
+  @override
+  Future<List<MealPlanSummary>> mealPlans() async {
+    calls.add('mealPlans');
+    // Always yield at least one microtask. Throwing before any await
+    // completes the future before FutureBuilder subscribes, and the
+    // error surfaces as unhandled rather than as an error state.
+    await Future<void>.delayed(delay ?? Duration.zero);
+    if (plansFailure != null) throw plansFailure!;
+    return plans;
+  }
+
+  @override
+  Future<MealPlanDetail> mealPlan({required String id}) async {
+    calls.add('mealPlan:$id');
+    // Always yield at least one microtask. Throwing before any await
+    // completes the future before FutureBuilder subscribes, and the
+    // error surfaces as unhandled rather than as an error state.
+    await Future<void>.delayed(delay ?? Duration.zero);
+    if (planDetailFailure != null) throw planDetailFailure!;
+    return planDetail!;
   }
 }
 

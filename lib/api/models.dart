@@ -148,3 +148,195 @@ class ConsentSummaryEntry {
     _ => purpose,
   };
 }
+
+/// ---------------------------------------------------------------------------
+/// Phase 2 — menus and plans
+/// ---------------------------------------------------------------------------
+///
+/// Macros arrive as **strings**, and are kept as strings all the way to the
+/// screen. The server sends them that way on purpose: they are exact decimals,
+/// and parsing them into a Dart `double` would reintroduce the binary rounding
+/// the server went to some trouble to avoid. The app displays nutrition; it
+/// does not recompute it.
+
+@immutable
+class Macros {
+  const Macros({
+    required this.energyKcal,
+    required this.proteinG,
+    required this.carbohydrateG,
+    required this.fatG,
+    required this.fibreG,
+  });
+
+  factory Macros.fromJson(Map<String, dynamic> json) => Macros(
+    energyKcal: json['energy_kcal'] as String? ?? '0',
+    proteinG: json['protein_g'] as String? ?? '0',
+    carbohydrateG: json['carbohydrate_g'] as String? ?? '0',
+    fatG: json['fat_g'] as String? ?? '0',
+    fibreG: json['fibre_g'] as String? ?? '0',
+  );
+
+  final String energyKcal;
+  final String proteinG;
+  final String carbohydrateG;
+  final String fatG;
+  final String fibreG;
+
+  /// "412 kcal · P 22.4 g · C 58.1 g · F 9.2 g"
+  String get summary =>
+      '$energyKcal kcal · P $proteinG g · C $carbohydrateG g · F $fatG g';
+}
+
+@immutable
+class MenuDish {
+  const MenuDish({
+    required this.slot,
+    required this.dishName,
+    required this.servingGrams,
+    required this.macros,
+    required this.allergenTags,
+  });
+
+  factory MenuDish.fromJson(Map<String, dynamic> json) => MenuDish(
+    slot: json['slot'] as String? ?? '',
+    dishName: json['dish_name'] as String? ?? '',
+    servingGrams: json['serving_grams'] as String? ?? '0',
+    macros: Macros.fromJson(
+      (json['macros'] as Map<String, dynamic>?) ?? const {},
+    ),
+    allergenTags: List<String>.from(
+      json['allergen_tags'] as List<dynamic>? ?? const [],
+    ),
+  );
+
+  final String slot;
+  final String dishName;
+  final String servingGrams;
+  final Macros macros;
+  final List<String> allergenTags;
+
+  /// "Breakfast", "Mid morning" — the server's slot key, made readable.
+  String get slotLabel {
+    if (slot.isEmpty) return '';
+    final words = slot.split('_');
+    final first = words.first;
+    return [
+      first[0].toUpperCase() + first.substring(1),
+      ...words.skip(1),
+    ].join(' ');
+  }
+}
+
+@immutable
+class MenuDay {
+  const MenuDay({
+    required this.dayIndex,
+    required this.goalKey,
+    required this.macros,
+    required this.allergenTags,
+    required this.dishes,
+  });
+
+  factory MenuDay.fromJson(Map<String, dynamic> json) => MenuDay(
+    dayIndex: json['day_index'] as int? ?? 0,
+    goalKey: json['goal_key'] as String? ?? '',
+    macros: Macros.fromJson(
+      (json['macros'] as Map<String, dynamic>?) ?? const {},
+    ),
+    allergenTags: List<String>.from(
+      json['allergen_tags'] as List<dynamic>? ?? const [],
+    ),
+    dishes: (json['items'] as List<dynamic>? ?? const [])
+        .map((item) => MenuDish.fromJson(item as Map<String, dynamic>))
+        .toList(growable: false),
+  );
+
+  final int dayIndex;
+  final String goalKey;
+  final Macros macros;
+  final List<String> allergenTags;
+  final List<MenuDish> dishes;
+}
+
+/// Why a library came back empty.
+///
+/// The server distinguishes "generated but behind a flag" from "not generated",
+/// and so does the app: telling somebody their condition is awaiting clinical
+/// review is honest, and telling them the same thing when nothing exists yet
+/// would not be.
+enum MenuLibraryEmptyReason { none, flagOff, notGenerated }
+
+@immutable
+class MenuLibrary {
+  const MenuLibrary({
+    required this.goalKey,
+    required this.days,
+    required this.emptyReason,
+    required this.isGated,
+  });
+
+  final String goalKey;
+  final List<MenuDay> days;
+  final MenuLibraryEmptyReason emptyReason;
+  final bool isGated;
+
+  bool get isEmpty => days.isEmpty;
+}
+
+@immutable
+class MealPlanSummary {
+  const MealPlanSummary({
+    required this.id,
+    required this.reference,
+    required this.goalKey,
+    required this.status,
+    required this.startsOn,
+    required this.endsOn,
+  });
+
+  factory MealPlanSummary.fromJson(Map<String, dynamic> json) =>
+      MealPlanSummary(
+        id: json['id'] as String? ?? '',
+        reference: json['reference'] as String? ?? '',
+        goalKey: json['goal_key'] as String? ?? '',
+        status: json['status'] as String? ?? '',
+        startsOn: json['starts_on'] as String? ?? '',
+        endsOn: json['ends_on'] as String? ?? '',
+      );
+
+  final String id;
+  final String reference;
+  final String goalKey;
+  final String status;
+  final String startsOn;
+  final String endsOn;
+}
+
+@immutable
+class MealPlanDetail {
+  const MealPlanDetail({
+    required this.summary,
+    required this.macros,
+    required this.excludedAllergenTags,
+    required this.days,
+  });
+
+  factory MealPlanDetail.fromJson(Map<String, dynamic> json) => MealPlanDetail(
+    summary: MealPlanSummary.fromJson(json),
+    macros: Macros.fromJson(
+      (json['macros'] as Map<String, dynamic>?) ?? const {},
+    ),
+    excludedAllergenTags: List<String>.from(
+      json['excluded_allergen_tags'] as List<dynamic>? ?? const [],
+    ),
+    days: (json['days'] as List<dynamic>? ?? const [])
+        .map((day) => MenuDay.fromJson(day as Map<String, dynamic>))
+        .toList(growable: false),
+  );
+
+  final MealPlanSummary summary;
+  final Macros macros;
+  final List<String> excludedAllergenTags;
+  final List<MenuDay> days;
+}
