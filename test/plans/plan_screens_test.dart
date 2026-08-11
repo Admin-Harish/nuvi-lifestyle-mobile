@@ -82,7 +82,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('plans-empty')), findsOneWidget);
-      expect(find.textContaining('once your dietitian assigns it'), findsOneWidget);
+      expect(
+        find.textContaining('once your dietitian assigns it'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('shows one message on failure and offers a retry', (
@@ -125,7 +128,9 @@ void main() {
       final api = FakeNuviApi(planDetail: _detail);
 
       await tester.pumpWidget(
-        MaterialApp(home: PlanDetailScreen(api: api, planId: 'plan-1')),
+        MaterialApp(
+          home: PlanDetailScreen(api: api, planId: 'plan-1'),
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -139,7 +144,9 @@ void main() {
       final api = FakeNuviApi(planDetail: _detail);
 
       await tester.pumpWidget(
-        MaterialApp(home: PlanDetailScreen(api: api, planId: 'plan-1')),
+        MaterialApp(
+          home: PlanDetailScreen(api: api, planId: 'plan-1'),
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -154,7 +161,9 @@ void main() {
       final api = FakeNuviApi(planDetailFailure: Exception('gone'));
 
       await tester.pumpWidget(
-        MaterialApp(home: PlanDetailScreen(api: api, planId: 'plan-1')),
+        MaterialApp(
+          home: PlanDetailScreen(api: api, planId: 'plan-1'),
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -168,7 +177,9 @@ void main() {
       );
 
       await tester.pumpWidget(
-        MaterialApp(home: PlanDetailScreen(api: api, planId: 'plan-1')),
+        MaterialApp(
+          home: PlanDetailScreen(api: api, planId: 'plan-1'),
+        ),
       );
       await tester.pump();
 

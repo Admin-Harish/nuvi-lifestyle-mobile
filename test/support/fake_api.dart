@@ -39,6 +39,7 @@ class FakeNuviApi implements NuviApi {
 
   /// Phase 2 fixtures.
   MenuLibrary? menuLibrary_;
+
   /// Cleared by a test to model a retry that succeeds.
   Object? menuFailure;
   List<MealPlanSummary> plans;

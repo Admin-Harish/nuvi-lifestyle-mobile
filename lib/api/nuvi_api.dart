@@ -182,7 +182,8 @@ class HttpNuviApi implements NuviApi {
         await _send('GET', 'menu-library/summary/?goal=$goalKey')
             as Map<String, dynamic>;
     final listing =
-        await _send('GET', 'menu-library/?goal=$goalKey') as Map<String, dynamic>;
+        await _send('GET', 'menu-library/?goal=$goalKey')
+            as Map<String, dynamic>;
 
     final rows = listing['results'] as List<dynamic>? ?? const [];
     final reason = switch (summary['empty_because'] as String?) {

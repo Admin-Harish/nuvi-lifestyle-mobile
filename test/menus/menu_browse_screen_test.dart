@@ -65,8 +65,9 @@ MenuLibrary _library({
   isGated: gated,
 );
 
-Widget _screen(FakeNuviApi api) =>
-    MaterialApp(home: MenuBrowseScreen(api: api, goalKey: 'weight_loss'));
+Widget _screen(FakeNuviApi api) => MaterialApp(
+  home: MenuBrowseScreen(api: api, goalKey: 'weight_loss'),
+);
 
 void main() {
   group('states', () {
@@ -169,10 +170,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('menu-day-1')), findsOneWidget);
-      expect(
-        find.byKey(const Key('menu-day-1-macros')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('menu-day-1-macros')), findsOneWidget);
       expect(find.textContaining('1712 kcal'), findsOneWidget);
     });
 

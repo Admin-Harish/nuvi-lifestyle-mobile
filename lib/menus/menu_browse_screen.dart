@@ -87,10 +87,7 @@ class _MenuBrowseScreenState extends State<MenuBrowseScreen> {
 
         final library = snapshot.data;
         if (library == null || library.isEmpty) {
-          return NuviPage(
-            title: 'Menus',
-            children: [_emptyNotice(library)],
-          );
+          return NuviPage(title: 'Menus', children: [_emptyNotice(library)]);
         }
 
         return NuviPage(
