@@ -140,3 +140,96 @@ class NuviPrimaryButton extends StatelessWidget {
     );
   }
 }
+
+/// A horizontal progress meter.
+///
+/// Monochrome, like everything else: the fill is solid ink on a muted track,
+/// and how full it is carries the meaning. [fraction] is clamped, so a day
+/// that has gone past its target fills the bar rather than overflowing it —
+/// the *number* beside the bar is what says by how much, because a bar cannot
+/// express "120 %" without a second visual language.
+class NuviMeterBar extends StatelessWidget {
+  const NuviMeterBar({
+    required this.fraction,
+    this.height = 8,
+    this.semanticLabel,
+    super.key,
+  });
+
+  final double fraction;
+  final double height;
+  final String? semanticLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final clamped = fraction.isNaN ? 0.0 : fraction.clamp(0.0, 1.0);
+    return Semantics(
+      label: semanticLabel,
+      value: '${(clamped * 100).round()}%',
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(NuviRadius.pill),
+        child: LinearProgressIndicator(
+          value: clamped,
+          minHeight: height,
+          backgroundColor: NuviColors.surfaceMuted,
+          valueColor: const AlwaysStoppedAnimation<Color>(NuviColors.onSurface),
+        ),
+      ),
+    );
+  }
+}
+
+/// One macro's name, its consumed-against-target figures and a meter.
+class NuviMacroBar extends StatelessWidget {
+  const NuviMacroBar({
+    required this.label,
+    required this.consumed,
+    required this.target,
+    required this.unit,
+    super.key,
+  });
+
+  final String label;
+
+  /// Strings, not numbers. The server sends exact decimals and the app renders
+  /// them; parsing to a double here would reintroduce the binary rounding the
+  /// server avoided. The only place a number is derived is [_fraction], which
+  /// feeds a bar and never a displayed figure.
+  final String consumed;
+  final String target;
+  final String unit;
+
+  double get _fraction {
+    final consumedValue = double.tryParse(consumed) ?? 0;
+    final targetValue = double.tryParse(target) ?? 0;
+    if (targetValue <= 0) return 0;
+    return consumedValue / targetValue;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: NuviSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(color: NuviColors.onSurfaceMuted),
+              ),
+              Text(
+                '$consumed / $target $unit',
+                style: const TextStyle(color: NuviColors.onSurface),
+              ),
+            ],
+          ),
+          const SizedBox(height: NuviSpacing.xs),
+          NuviMeterBar(fraction: _fraction, semanticLabel: label),
+        ],
+      ),
+    );
+  }
+}
