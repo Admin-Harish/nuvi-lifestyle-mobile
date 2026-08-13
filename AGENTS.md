@@ -76,6 +76,17 @@ installed side by side: `lib/main_dev.dart` / `main_staging.dart` /
 - After a successful write, clear the pending marker in the reload as well as in
   the failure path. An indeterminate `LinearProgressIndicator` left mounted
   never settles, so `pumpAndSettle` hangs and the row spins forever in the app.
+  `test/phase5/resilience_and_accessibility_test.dart` uses `pumpAndSettle` after
+  every successful write as the assertion for exactly this.
+- **No Phase 4 endpoint takes an idempotency key**, so a write must never be
+  retried automatically — a POST whose *response* was lost has already been
+  applied, and `POST /pantry-items/` and `.../adjust/` cannot tell a retry from a
+  second real purchase. A test asserts the app does not retry. Only `logIntake`
+  (Phase 3) carries a key.
+- Accessibility is tested, not assumed: semantics labels and values on every
+  meter, all six Phase 4 screens rendered at text scale 2.0, and keyboard
+  traversal to the confirm button. Note `Focus.maybeOf(context)` resolves the
+  *enclosing* node, not a `FilledButton`'s own — tab to the control instead.
 - `lib/theme/nuvi_tokens.dart` holds deliberate Phase 0 stubs; exact values,
   elevation, motion and dark mode belong to Phase 7B. `NuviTheme.dark` returns
   the light theme on purpose — do not invent a dark palette.
