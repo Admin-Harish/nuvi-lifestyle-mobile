@@ -75,6 +75,50 @@ abstract class NuviApi {
   Future<List<MealPlanSummary>> mealPlans();
 
   Future<MealPlanDetail> mealPlan({required String id});
+
+  // --- Phase 3: tracking ---
+
+  /// One member's reconciled day: target, consumed, remaining, hydration.
+  Future<DailySummary> dailySummary({
+    required String memberId,
+    required String date,
+  });
+
+  /// A household's day as per-member totals.
+  ///
+  /// The server sends totals only — no dish names, no labels. The app cannot
+  /// show one member's food on this screen because it is never sent it.
+  Future<HouseholdDailySummary> householdDailySummary({
+    required String householdId,
+    required String date,
+  });
+
+  /// Log something. [idempotencyKey] is required rather than optional: a retry
+  /// without one silently creates a second meal, and a caller that has to pass
+  /// the argument has to think about it.
+  Future<IntakeEvent> logIntake({
+    required String memberId,
+    required String eventType,
+    required String occurredAt,
+    required String idempotencyKey,
+    String label,
+    String? planItemId,
+    String? portionFraction,
+    Map<String, String>? macros,
+    int waterMl,
+  });
+
+  /// Set the day's water target. The consumed total is the server's to compute
+  /// from the logged events; there is no call that sets it directly.
+  Future<void> setWaterTarget({
+    required String memberId,
+    required String date,
+    required int targetMl,
+  });
+
+  /// The member profiles this account may see. Already scoped server-side, so
+  /// the list is the answer rather than something to filter.
+  Future<List<MembershipRef>> memberships();
 }
 
 class HttpNuviApi implements NuviApi {
@@ -215,6 +259,86 @@ class HttpNuviApi implements NuviApi {
   Future<MealPlanDetail> mealPlan({required String id}) async {
     final payload = await _send('GET', 'meal-plans/$id/');
     return MealPlanDetail.fromJson(payload as Map<String, dynamic>);
+  }
+
+  @override
+  Future<DailySummary> dailySummary({
+    required String memberId,
+    required String date,
+  }) async {
+    final payload = await _send(
+      'GET',
+      'daily-summary/?member=$memberId&date=$date',
+    );
+    return DailySummary.fromJson(payload as Map<String, dynamic>);
+  }
+
+  @override
+  Future<HouseholdDailySummary> householdDailySummary({
+    required String householdId,
+    required String date,
+  }) async {
+    final payload = await _send(
+      'GET',
+      'household-daily-summary/?household=$householdId&date=$date',
+    );
+    return HouseholdDailySummary.fromJson(payload as Map<String, dynamic>);
+  }
+
+  @override
+  Future<IntakeEvent> logIntake({
+    required String memberId,
+    required String eventType,
+    required String occurredAt,
+    required String idempotencyKey,
+    String label = '',
+    String? planItemId,
+    String? portionFraction,
+    Map<String, String>? macros,
+    int waterMl = 0,
+  }) async {
+    final payload = await _send(
+      'POST',
+      'intake-events/',
+      body: {
+        'member': memberId,
+        'event_type': eventType,
+        'occurred_at': occurredAt,
+        'idempotency_key': idempotencyKey,
+        if (label.isNotEmpty) 'label': label,
+        'plan_item': ?planItemId,
+        'portion_fraction': ?portionFraction,
+        'macros': ?macros,
+        if (waterMl > 0) 'water_ml': waterMl,
+      },
+    );
+    return IntakeEvent.fromJson(payload as Map<String, dynamic>);
+  }
+
+  @override
+  Future<void> setWaterTarget({
+    required String memberId,
+    required String date,
+    required int targetMl,
+  }) async {
+    await _send(
+      'POST',
+      'hydration/set-target/',
+      body: {'member': memberId, 'local_date': date, 'target_ml': targetMl},
+    );
+  }
+
+  @override
+  Future<List<MembershipRef>> memberships() async {
+    final payload = await _send('GET', 'members/');
+    // The endpoint is unpaginated today and paginated tomorrow; accept both
+    // rather than break on the day somebody adds a pagination class.
+    final rows = payload is Map<String, dynamic>
+        ? (payload['results'] as List<dynamic>? ?? const [])
+        : (payload as List<dynamic>? ?? const []);
+    return rows
+        .map((row) => MembershipRef.fromJson(row as Map<String, dynamic>))
+        .toList(growable: false);
   }
 
   Future<Object?> _send(
