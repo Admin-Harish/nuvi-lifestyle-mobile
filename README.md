@@ -133,8 +133,18 @@ lib/
     goal_catalogue_screen.dart   wellness selectable, gated goals shown inert
   consent/
     consent_screen.dart    five separate switches, draft copy labelled
+  menus/
+    menu_browse_screen.dart      read-only menu library
+  plans/
+    plan_list_screen.dart        issued plans, and one plan day by day
+  tracking/
+    daily_tracker_screen.dart      target vs consumed, macro bars, water,
+                                   remaining budget; the app's first writes,
+                                   every one carrying an idempotency key
+    household_summary_screen.dart  per-member totals only — the server sends
+                                   no dish names or labels to this screen
   widgets/
-    nuvi_scaffold.dart     shared page, notice, field and button
+    nuvi_scaffold.dart     shared page, notice, field, button, meters
   config/
     app_environment.dart   the three flavors
     app_config.dart        API base URL resolution and its guards
@@ -144,6 +154,8 @@ lib/
 scripts/
   run.sh  build.sh
 test/
+  support/fake_api.dart    an in-memory NuviApi; no socket, no server
+  auth/  consent/  goals/  menus/  plans/  tracking/
   widget_test.dart
 ```
 
