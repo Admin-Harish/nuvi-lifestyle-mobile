@@ -64,6 +64,17 @@ abstract class NuviApi {
     required String purpose,
     required String decision,
   });
+
+  /// The menu library for one goal. Read-only.
+  ///
+  /// A gated goal returns an empty library with a reason — the server decides
+  /// that, and the app renders the decision rather than inferring it from a
+  /// flag it should not be able to see.
+  Future<MenuLibrary> menuLibrary({required String goalKey});
+
+  Future<List<MealPlanSummary>> mealPlans();
+
+  Future<MealPlanDetail> mealPlan({required String id});
 }
 
 class HttpNuviApi implements NuviApi {
@@ -160,6 +171,50 @@ class HttpNuviApi implements NuviApi {
       'consent/',
       body: {'purpose': purpose, 'decision': decision},
     );
+  }
+
+  @override
+  Future<MenuLibrary> menuLibrary({required String goalKey}) async {
+    // Two calls: the summary carries *why* a library is empty, which the list
+    // alone cannot express — an empty page and a gated goal look identical
+    // otherwise, and they are not the same thing to tell somebody.
+    final summary =
+        await _send('GET', 'menu-library/summary/?goal=$goalKey')
+            as Map<String, dynamic>;
+    final listing =
+        await _send('GET', 'menu-library/?goal=$goalKey')
+            as Map<String, dynamic>;
+
+    final rows = listing['results'] as List<dynamic>? ?? const [];
+    final reason = switch (summary['empty_because'] as String?) {
+      'flag_off' => MenuLibraryEmptyReason.flagOff,
+      'not_generated' => MenuLibraryEmptyReason.notGenerated,
+      _ => MenuLibraryEmptyReason.none,
+    };
+
+    return MenuLibrary(
+      goalKey: goalKey,
+      days: rows
+          .map((row) => MenuDay.fromJson(row as Map<String, dynamic>))
+          .toList(growable: false),
+      emptyReason: reason,
+      isGated: summary['is_gated'] as bool? ?? false,
+    );
+  }
+
+  @override
+  Future<List<MealPlanSummary>> mealPlans() async {
+    final payload = await _send('GET', 'meal-plans/') as Map<String, dynamic>;
+    final rows = payload['results'] as List<dynamic>? ?? const [];
+    return rows
+        .map((row) => MealPlanSummary.fromJson(row as Map<String, dynamic>))
+        .toList(growable: false);
+  }
+
+  @override
+  Future<MealPlanDetail> mealPlan({required String id}) async {
+    final payload = await _send('GET', 'meal-plans/$id/');
+    return MealPlanDetail.fromJson(payload as Map<String, dynamic>);
   }
 
   Future<Object?> _send(
