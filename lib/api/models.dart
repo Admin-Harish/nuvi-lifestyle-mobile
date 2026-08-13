@@ -733,3 +733,503 @@ class MembershipRef {
   final String displayName;
   final String reference;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 4 — pantry, grocery reconciliation, reminders, progress, recovery
+//
+// Every quantity below is a String, for the reason `Macros` already documents:
+// the server sends exact decimals and the app renders them. Parsing to a double
+// would reintroduce the binary rounding the server was careful to avoid, and a
+// pantry that reads 0.30000000000000004 kg is one nobody trusts.
+// ---------------------------------------------------------------------------
+
+class PantryItem {
+  const PantryItem({
+    required this.id,
+    required this.displayName,
+    required this.quantityOnHand,
+    required this.unit,
+    this.label = '',
+    this.expiresOn,
+    this.bestBeforeOn,
+    this.daysUntilDate,
+    this.isUseSoon = false,
+    this.isArchived = false,
+  });
+
+  factory PantryItem.fromJson(Map<String, dynamic> json) => PantryItem(
+    id: json['id'] as String? ?? '',
+    displayName: json['display_name'] as String? ?? '',
+    quantityOnHand: json['quantity_on_hand'] as String? ?? '0',
+    unit: json['unit'] as String? ?? 'g',
+    label: json['label'] as String? ?? '',
+    expiresOn: json['expires_on'] as String?,
+    bestBeforeOn: json['best_before_on'] as String?,
+    daysUntilDate: json['days_until_date'] as int?,
+    isUseSoon: json['is_use_soon'] as bool? ?? false,
+    isArchived: json['is_archived'] as bool? ?? false,
+  );
+
+  final String id;
+  final String displayName;
+  final String quantityOnHand;
+  final String unit;
+  final String label;
+  final String? expiresOn;
+  final String? bestBeforeOn;
+
+  /// Negative when the date has passed. Null when the item carries no date.
+  final int? daysUntilDate;
+  final bool isUseSoon;
+  final bool isArchived;
+
+  /// The date worth showing, expiry taking precedence over quality.
+  String? get soonestDate => expiresOn ?? bestBeforeOn;
+}
+
+/// One member's share of one grocery. Never merged with another member's.
+class GroceryMemberLine {
+  const GroceryMemberLine({
+    required this.memberId,
+    required this.memberReference,
+    required this.grams,
+    this.goalKey = '',
+    this.excludedAllergenTags = const [],
+  });
+
+  factory GroceryMemberLine.fromJson(Map<String, dynamic> json) =>
+      GroceryMemberLine(
+        memberId: json['member'] as String? ?? '',
+        memberReference: json['member_reference'] as String? ?? '',
+        grams: json['grams'] as String? ?? '0',
+        goalKey: json['goal_key'] as String? ?? '',
+        excludedAllergenTags:
+            (json['excluded_allergen_tags'] as List<dynamic>? ?? const [])
+                .map((tag) => tag as String)
+                .toList(growable: false),
+      );
+
+  final String memberId;
+  final String memberReference;
+  final String grams;
+  final String goalKey;
+  final List<String> excludedAllergenTags;
+}
+
+/// A pantry item that could not be converted to a weight, and why not.
+class UnconvertibleStock {
+  const UnconvertibleStock({
+    required this.name,
+    required this.quantity,
+    required this.unit,
+    required this.reason,
+  });
+
+  factory UnconvertibleStock.fromJson(Map<String, dynamic> json) =>
+      UnconvertibleStock(
+        name: json['name'] as String? ?? '',
+        quantity: json['quantity'] as String? ?? '0',
+        unit: json['unit'] as String? ?? '',
+        reason: json['reason'] as String? ?? '',
+      );
+
+  final String name;
+  final String quantity;
+  final String unit;
+  final String reason;
+}
+
+/// One grocery: what the plans need, what the cupboard holds, what is missing.
+class ReconciledGrocery {
+  const ReconciledGrocery({
+    required this.canonicalKey,
+    required this.name,
+    required this.requiredGrams,
+    required this.onHandGrams,
+    required this.netToBuyGrams,
+    required this.surplusGrams,
+    this.isFullyStocked = false,
+    this.members = const [],
+    this.unconvertible = const [],
+  });
+
+  factory ReconciledGrocery.fromJson(
+    Map<String, dynamic> json,
+  ) => ReconciledGrocery(
+    canonicalKey: json['canonical_key'] as String? ?? '',
+    name: json['name'] as String? ?? '',
+    requiredGrams: json['required_grams'] as String? ?? '0',
+    onHandGrams: json['on_hand_grams'] as String? ?? '0',
+    netToBuyGrams: json['net_to_buy_grams'] as String? ?? '0',
+    surplusGrams: json['surplus_grams'] as String? ?? '0',
+    isFullyStocked: json['is_fully_stocked'] as bool? ?? false,
+    members: (json['members'] as List<dynamic>? ?? const [])
+        .map((row) => GroceryMemberLine.fromJson(row as Map<String, dynamic>))
+        .toList(growable: false),
+    unconvertible: (json['unconvertible'] as List<dynamic>? ?? const [])
+        .map((row) => UnconvertibleStock.fromJson(row as Map<String, dynamic>))
+        .toList(growable: false),
+  );
+
+  final String canonicalKey;
+  final String name;
+  final String requiredGrams;
+  final String onHandGrams;
+  final String netToBuyGrams;
+  final String surplusGrams;
+  final bool isFullyStocked;
+
+  /// Per-member requirement lines. Rendered separately, never summed — two
+  /// members' shares stop being interchangeable the moment one of them has an
+  /// allergy the other does not.
+  final List<GroceryMemberLine> members;
+  final List<UnconvertibleStock> unconvertible;
+}
+
+class GroceryReconciliation {
+  const GroceryReconciliation({
+    required this.householdId,
+    required this.start,
+    required this.end,
+    required this.disclaimer,
+    this.groceries = const [],
+    this.useSoon = const [],
+  });
+
+  factory GroceryReconciliation.fromJson(
+    Map<String, dynamic> json,
+  ) => GroceryReconciliation(
+    householdId: json['household'] as String? ?? '',
+    start: json['start'] as String? ?? '',
+    end: json['end'] as String? ?? '',
+    disclaimer: json['disclaimer'] as String? ?? '',
+    groceries: (json['groceries'] as List<dynamic>? ?? const [])
+        .map((row) => ReconciledGrocery.fromJson(row as Map<String, dynamic>))
+        .toList(growable: false),
+    useSoon: (json['use_soon'] as List<dynamic>? ?? const [])
+        .map((row) => (row as Map<String, dynamic>)['name'] as String? ?? '')
+        .toList(growable: false),
+  );
+
+  final String householdId;
+  final String start;
+  final String end;
+  final String disclaimer;
+  final List<ReconciledGrocery> groceries;
+  final List<String> useSoon;
+
+  List<ReconciledGrocery> get toBuy =>
+      groceries.where((g) => g.netToBuyGrams != '0.0').toList(growable: false);
+
+  List<ReconciledGrocery> get alreadyCovered =>
+      groceries.where((g) => g.isFullyStocked).toList(growable: false);
+}
+
+class ReminderSchedule {
+  const ReminderSchedule({
+    required this.id,
+    required this.memberId,
+    required this.kind,
+    required this.sendAtLocal,
+    this.slot = '',
+    this.isEnabled = false,
+    this.approvedBy = '',
+    this.requiresApprovalToEnable = true,
+  });
+
+  factory ReminderSchedule.fromJson(Map<String, dynamic> json) =>
+      ReminderSchedule(
+        id: json['id'] as String? ?? '',
+        memberId: json['member'] as String? ?? '',
+        kind: json['kind'] as String? ?? '',
+        sendAtLocal: json['send_at_local'] as String? ?? '',
+        slot: json['slot'] as String? ?? '',
+        isEnabled: json['is_enabled'] as bool? ?? false,
+        approvedBy: json['approved_by'] as String? ?? '',
+        requiresApprovalToEnable:
+            json['requires_approval_to_enable'] as bool? ?? true,
+      );
+
+  final String id;
+  final String memberId;
+  final String kind;
+  final String sendAtLocal;
+  final String slot;
+  final bool isEnabled;
+  final String approvedBy;
+
+  /// The server says so on every row. The app renders the decision rather than
+  /// deciding for itself whether an approver is needed.
+  final bool requiresApprovalToEnable;
+}
+
+class ProgressTrends {
+  const ProgressTrends({
+    required this.adherence,
+    required this.hydrationConsistency,
+    required this.mealRegularity,
+    required this.loggingConsistency,
+    required this.macroConsistency,
+  });
+
+  factory ProgressTrends.fromJson(Map<String, dynamic> json) => ProgressTrends(
+    adherence: json['adherence'] as String? ?? '0',
+    hydrationConsistency: json['hydration_consistency'] as String? ?? '0',
+    mealRegularity: json['meal_regularity'] as String? ?? '0',
+    loggingConsistency: json['logging_consistency'] as String? ?? '0',
+    macroConsistency: json['macro_consistency'] as String? ?? '0',
+  );
+
+  final String adherence;
+  final String hydrationConsistency;
+  final String mealRegularity;
+  final String loggingConsistency;
+  final String macroConsistency;
+}
+
+class MemberProgress {
+  const MemberProgress({
+    required this.memberId,
+    required this.memberReference,
+    required this.start,
+    required this.end,
+    required this.trends,
+    required this.disclaimer,
+    this.daysInWindow = 0,
+    this.daysLogged = 0,
+    this.isRepresentative = false,
+    this.loggingStreakDays = 0,
+    this.longestLoggingStreakDays = 0,
+  });
+
+  factory MemberProgress.fromJson(Map<String, dynamic> json) => MemberProgress(
+    memberId: json['member'] as String? ?? '',
+    memberReference: json['member_reference'] as String? ?? '',
+    start: json['start'] as String? ?? '',
+    end: json['end'] as String? ?? '',
+    trends: ProgressTrends.fromJson(
+      json['trends'] as Map<String, dynamic>? ?? const {},
+    ),
+    disclaimer: json['disclaimer'] as String? ?? '',
+    daysInWindow: json['days_in_window'] as int? ?? 0,
+    daysLogged: json['days_logged'] as int? ?? 0,
+    isRepresentative: json['is_representative'] as bool? ?? false,
+    loggingStreakDays: json['logging_streak_days'] as int? ?? 0,
+    longestLoggingStreakDays: json['longest_logging_streak_days'] as int? ?? 0,
+  );
+
+  final String memberId;
+  final String memberReference;
+  final String start;
+  final String end;
+  final ProgressTrends trends;
+  final String disclaimer;
+  final int daysInWindow;
+  final int daysLogged;
+
+  /// False below a week of logging. The screen shows "not enough logged yet"
+  /// rather than drawing four points as a trend line.
+  final bool isRepresentative;
+  final int loggingStreakDays;
+  final int longestLoggingStreakDays;
+}
+
+class HouseholdProgress {
+  const HouseholdProgress({
+    required this.householdId,
+    required this.start,
+    required this.end,
+    required this.disclaimer,
+    this.members = const [],
+  });
+
+  factory HouseholdProgress.fromJson(Map<String, dynamic> json) =>
+      HouseholdProgress(
+        householdId: json['household'] as String? ?? '',
+        start: json['start'] as String? ?? '',
+        end: json['end'] as String? ?? '',
+        disclaimer: json['disclaimer'] as String? ?? '',
+        members: (json['members'] as List<dynamic>? ?? const [])
+            .map((row) => MemberProgress.fromJson(row as Map<String, dynamic>))
+            .toList(growable: false),
+      );
+
+  final String householdId;
+  final String start;
+  final String end;
+  final String disclaimer;
+
+  /// Totals only. The server sends no per-day detail on this endpoint, so the
+  /// screen cannot show one member's pattern to another.
+  final List<MemberProgress> members;
+}
+
+class RecoveryAdjustment {
+  const RecoveryAdjustment({
+    required this.day,
+    required this.originalTargetKcal,
+    required this.proposedTargetKcal,
+    required this.deltaKcal,
+    this.wasClamped = false,
+  });
+
+  factory RecoveryAdjustment.fromJson(Map<String, dynamic> json) =>
+      RecoveryAdjustment(
+        day: json['day'] as String? ?? '',
+        originalTargetKcal: json['original_target_kcal'] as String? ?? '0',
+        proposedTargetKcal: json['proposed_target_kcal'] as String? ?? '0',
+        deltaKcal: json['delta_kcal'] as String? ?? '0',
+        wasClamped: json['was_clamped'] as bool? ?? false,
+      );
+
+  final String day;
+  final String originalTargetKcal;
+  final String proposedTargetKcal;
+  final String deltaKcal;
+  final bool wasClamped;
+}
+
+class ClinicalReferralInfo {
+  const ClinicalReferralInfo({required this.reason, this.goalKey = ''});
+
+  factory ClinicalReferralInfo.fromJson(Map<String, dynamic> json) =>
+      ClinicalReferralInfo(
+        reason: json['reason'] as String? ?? '',
+        goalKey: json['goal_key'] as String? ?? '',
+      );
+
+  final String reason;
+  final String goalKey;
+}
+
+class RecoveryProposal {
+  const RecoveryProposal({
+    required this.id,
+    required this.memberId,
+    required this.trigger,
+    required this.triggerDate,
+    required this.status,
+    required this.floorKcal,
+    required this.ceilingKcal,
+    required this.shortfallKcal,
+    required this.redistributedKcal,
+    required this.unrecoveredKcal,
+    required this.rationale,
+    this.adjustments = const [],
+    this.needsClinician = false,
+    this.referral,
+  });
+
+  factory RecoveryProposal.fromJson(Map<String, dynamic> json) =>
+      RecoveryProposal(
+        id: json['id'] as String? ?? '',
+        memberId: json['member'] as String? ?? '',
+        trigger: json['trigger'] as String? ?? '',
+        triggerDate: json['trigger_date'] as String? ?? '',
+        status: json['status'] as String? ?? '',
+        floorKcal: json['floor_kcal'] as String? ?? '0',
+        ceilingKcal: json['ceiling_kcal'] as String? ?? '0',
+        shortfallKcal: json['shortfall_kcal'] as String? ?? '0',
+        redistributedKcal: json['redistributed_kcal'] as String? ?? '0',
+        unrecoveredKcal: json['unrecovered_kcal'] as String? ?? '0',
+        rationale: json['rationale'] as String? ?? '',
+        adjustments: (json['adjustments'] as List<dynamic>? ?? const [])
+            .map(
+              (row) => RecoveryAdjustment.fromJson(row as Map<String, dynamic>),
+            )
+            .toList(growable: false),
+        needsClinician: json['needs_clinician'] as bool? ?? false,
+        referral: json['referral'] == null
+            ? null
+            : ClinicalReferralInfo.fromJson(
+                json['referral'] as Map<String, dynamic>,
+              ),
+      );
+
+  final String id;
+  final String memberId;
+  final String trigger;
+  final String triggerDate;
+  final String status;
+
+  /// The envelope the draft was built inside, rendered next to the advice so
+  /// the guarantee is as visible as the suggestion.
+  final String floorKcal;
+  final String ceilingKcal;
+  final String shortfallKcal;
+  final String redistributedKcal;
+
+  /// The part of the shortfall the draft deliberately does not make up.
+  final String unrecoveredKcal;
+  final String rationale;
+  final List<RecoveryAdjustment> adjustments;
+  final bool needsClinician;
+  final ClinicalReferralInfo? referral;
+
+  bool get isOpen => status == 'proposed';
+}
+
+/// One ingredient's share of a deduction proposal.
+class PantryDeductionLine {
+  const PantryDeductionLine({
+    required this.itemId,
+    required this.itemName,
+    required this.quantity,
+    required this.unit,
+    required this.availableQuantity,
+    this.exceedsAvailable = false,
+  });
+
+  factory PantryDeductionLine.fromJson(Map<String, dynamic> json) =>
+      PantryDeductionLine(
+        itemId: json['item'] as String? ?? '',
+        itemName: json['item_name'] as String? ?? '',
+        quantity: json['quantity'] as String? ?? '0',
+        unit: json['unit'] as String? ?? '',
+        availableQuantity: json['available_quantity'] as String? ?? '0',
+        exceedsAvailable: json['exceeds_available'] as bool? ?? false,
+      );
+
+  final String itemId;
+  final String itemName;
+  final String quantity;
+  final String unit;
+  final String availableQuantity;
+
+  /// True when the proposal asks for more than the cupboard holds. Shown, not
+  /// silently clamped: the books and the kitchen disagreeing is worth knowing.
+  final bool exceedsAvailable;
+}
+
+/// A draft "shall I take this out of the pantry?", awaiting a person.
+class PantryDeductionProposal {
+  const PantryDeductionProposal({
+    required this.id,
+    required this.status,
+    this.summary = '',
+    this.lines = const [],
+  });
+
+  factory PantryDeductionProposal.fromJson(Map<String, dynamic> json) =>
+      PantryDeductionProposal(
+        id: json['id'] as String? ?? '',
+        status: json['status'] as String? ?? '',
+        summary: json['summary'] as String? ?? '',
+        lines: (json['lines'] as List<dynamic>? ?? const [])
+            .map(
+              (row) =>
+                  PantryDeductionLine.fromJson(row as Map<String, dynamic>),
+            )
+            .toList(growable: false),
+      );
+
+  final String id;
+  final String status;
+
+  /// The dish and its slot, e.g. "Sambar Rice (lunch)". Never a goal, a
+  /// condition or an allergen — a pantry screen is not a health screen.
+  final String summary;
+  final List<PantryDeductionLine> lines;
+
+  bool get isOpen => status == 'proposed';
+}

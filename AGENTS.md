@@ -12,7 +12,8 @@ section, which is stale.
 | --- | --- |
 | A network call or wire model | `lib/api/nuvi_api.dart`, `lib/api/models.dart` |
 | Sign-in, registration, session state | `lib/auth/` — `session.dart` first |
-| A screen | `lib/<domain>/*_screen.dart` (`auth`, `goals`, `consent`, `menus`, `plans`) |
+| A screen | `lib/<domain>/*_screen.dart` (`auth`, `goals`, `consent`, `menus`, `plans`, `tracking`, `pantry`, `reminders`, `progress`, `recovery`) |
+| Loading / error / offline states | `lib/widgets/request_state.dart` — `NuviAsync` and `classifyFailure` |
 | Base URL, flavors, startup guards | `lib/config/app_config.dart`, `app_environment.dart` |
 | Colour, spacing, type | `lib/theme/nuvi_tokens.dart` |
 | Shared page/notice/field/button | `lib/widgets/nuvi_scaffold.dart` |
@@ -44,10 +45,37 @@ installed side by side: `lib/main_dev.dart` / `main_staging.dart` /
 - **Screens read semantic theme tokens** (`NuviColors.onSurface`), never the
   ramp and never a literal colour. The palette is monochrome and a test fails
   the build on a stray hue.
+- **Offline is a distinct state from error.** `classifyFailure` in
+  `lib/widgets/request_state.dart` is the one place that decides, and
+  `RequestFailure.refused` gets no retry button — hammering an endpoint that
+  will never say yes is not a recovery path. Every screen's tests assert the
+  offline and error copy separately, because a test for "some notice appeared"
+  passes with the message that tells somebody on full signal to check their
+  connection.
+- **Confirm gates are real screens, not dialogs bolted onto a write.** A pantry
+  deduction and a recovery proposal each have a screen whose job is to ask, and
+  the widget tests assert that `api.writes` is empty until the user answers. The
+  server refuses to act without the confirmation; the client must not pretend
+  otherwise by pre-sending it.
+- **Nothing in `lib/` decides what a member is allowed to do.** A reminder
+  cannot be enabled without an approver because `enableReminder` requires the
+  argument and the server requires the value — not because a screen checks a
+  role. `requires_approval_to_enable` arrives on the wire and is rendered.
 - **`.env.example` contains variable names only.** CI fails on any value.
 
 ## Traps
 
+- Quantities and macros arrive as **decimal strings and are rendered as
+  strings**. Parsing one to a double reintroduces the binary rounding the server
+  avoided; the widget tests assert exact strings like `250.000 g` so a
+  reformatting regression fails rather than shipping.
+- A `NuviPage` is a `ListView` and builds lazily. On the default 800×600 test
+  window later rows are never constructed, so a finder reports "not found" for a
+  layout reason. Every Phase 4 test file sets a tall surface — copy
+  `_useTallSurface`.
+- After a successful write, clear the pending marker in the reload as well as in
+  the failure path. An indeterminate `LinearProgressIndicator` left mounted
+  never settles, so `pumpAndSettle` hangs and the row spins forever in the app.
 - `lib/theme/nuvi_tokens.dart` holds deliberate Phase 0 stubs; exact values,
   elevation, motion and dark mode belong to Phase 7B. `NuviTheme.dark` returns
   the light theme on purpose — do not invent a dark palette.

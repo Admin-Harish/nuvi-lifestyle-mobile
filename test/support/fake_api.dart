@@ -73,6 +73,32 @@ class FakeNuviApi implements NuviApi {
   List<ConsentSummaryEntry> consents;
   CurrentUser? user;
 
+  /// Phase 4 fixtures.
+  ///
+  /// `writes` records every mutating call so a test can assert what the screen
+  /// actually asked the server to do — in particular that a pantry screen with
+  /// an unconfirmed proposal on it sent no deduction, which is the client half
+  /// of the confirm gate.
+  List<PantryItem> pantry = const [];
+  Object? pantryFailure;
+  GroceryReconciliation? reconciliation_;
+  Object? reconciliationFailure;
+  List<PantryDeductionProposal> deductions = const [];
+  Object? deductionFailure;
+  Object? decideDeductionFailure;
+  List<ReminderSchedule> schedules = const [];
+  Object? schedulesFailure;
+  Object? enableFailure;
+  MemberProgress? memberProgress_;
+  Object? memberProgressFailure;
+  HouseholdProgress? householdProgress_;
+  Object? householdProgressFailure;
+  List<RecoveryProposal> recoveries = const [];
+  Object? recoveryFailure;
+  Object? decideRecoveryFailure;
+
+  final List<String> writes = <String>[];
+
   final List<String> calls = <String>[];
   final List<(String purpose, String decision)> consentWrites =
       <(String, String)>[];
@@ -279,6 +305,224 @@ class FakeNuviApi implements NuviApi {
     calls.add('memberships');
     await Future<void>.delayed(delay ?? Duration.zero);
     return memberships_;
+  }
+
+  @override
+  Future<List<PantryItem>> pantryItems({required String householdId}) async {
+    calls.add('pantryItems');
+    await Future<void>.delayed(delay ?? Duration.zero);
+    if (pantryFailure != null) throw pantryFailure!;
+    return pantry;
+  }
+
+  @override
+  Future<PantryItem> addPantryItem({
+    required String householdId,
+    required String label,
+    required String quantity,
+    String unit = 'g',
+    String? bestBeforeOn,
+    String? expiresOn,
+  }) async {
+    writes.add('addPantryItem:$label');
+    await Future<void>.delayed(delay ?? Duration.zero);
+    return PantryItem(
+      id: 'new-item',
+      displayName: label,
+      quantityOnHand: quantity,
+      unit: unit,
+    );
+  }
+
+  @override
+  Future<PantryItem> adjustPantryItem({
+    required String itemId,
+    required String delta,
+    required String reason,
+  }) async {
+    writes.add('adjust:$itemId:$delta:$reason');
+    await Future<void>.delayed(delay ?? Duration.zero);
+    if (pantryFailure != null) throw pantryFailure!;
+    return PantryItem(
+      id: itemId,
+      displayName: 'adjusted',
+      quantityOnHand: '0',
+      unit: 'g',
+    );
+  }
+
+  @override
+  Future<GroceryReconciliation> groceryReconciliation({
+    required String householdId,
+    required String start,
+    required String end,
+  }) async {
+    calls.add('groceryReconciliation');
+    await Future<void>.delayed(delay ?? Duration.zero);
+    if (reconciliationFailure != null) throw reconciliationFailure!;
+    return reconciliation_ ??
+        GroceryReconciliation(
+          householdId: householdId,
+          start: start,
+          end: end,
+          disclaimer: 'unreviewed estimates',
+        );
+  }
+
+  @override
+  Future<List<PantryDeductionProposal>> pantryDeductions({
+    required String householdId,
+  }) async {
+    calls.add('pantryDeductions');
+    await Future<void>.delayed(delay ?? Duration.zero);
+    if (deductionFailure != null) throw deductionFailure!;
+    return deductions;
+  }
+
+  @override
+  Future<void> confirmPantryDeduction({required String proposalId}) async {
+    writes.add('confirmDeduction:$proposalId');
+    await Future<void>.delayed(delay ?? Duration.zero);
+    if (decideDeductionFailure != null) throw decideDeductionFailure!;
+    deductions = const [];
+  }
+
+  @override
+  Future<void> rejectPantryDeduction({required String proposalId}) async {
+    writes.add('rejectDeduction:$proposalId');
+    await Future<void>.delayed(delay ?? Duration.zero);
+    if (decideDeductionFailure != null) throw decideDeductionFailure!;
+    deductions = const [];
+  }
+
+  @override
+  Future<List<ReminderSchedule>> reminderSchedules({
+    required String memberId,
+  }) async {
+    calls.add('reminderSchedules');
+    await Future<void>.delayed(delay ?? Duration.zero);
+    if (schedulesFailure != null) throw schedulesFailure!;
+    return schedules;
+  }
+
+  @override
+  Future<ReminderSchedule> disableReminder({required String scheduleId}) async {
+    writes.add('disable:$scheduleId');
+    await Future<void>.delayed(delay ?? Duration.zero);
+    return ReminderSchedule(
+      id: scheduleId,
+      memberId: 'm1',
+      kind: 'hydration',
+      sendAtLocal: '10:00:00',
+    );
+  }
+
+  @override
+  Future<ReminderSchedule> enableReminder({
+    required String scheduleId,
+    required String approvedBy,
+    String approvalReference = '',
+  }) async {
+    writes.add('enable:$scheduleId:$approvedBy');
+    await Future<void>.delayed(delay ?? Duration.zero);
+    if (enableFailure != null) throw enableFailure!;
+    return ReminderSchedule(
+      id: scheduleId,
+      memberId: 'm1',
+      kind: 'hydration',
+      sendAtLocal: '10:00:00',
+      isEnabled: true,
+      approvedBy: approvedBy,
+    );
+  }
+
+  @override
+  Future<MemberProgress> memberProgress({
+    required String memberId,
+    required String start,
+    required String end,
+  }) async {
+    calls.add('memberProgress');
+    await Future<void>.delayed(delay ?? Duration.zero);
+    if (memberProgressFailure != null) throw memberProgressFailure!;
+    return memberProgress_ ??
+        MemberProgress(
+          memberId: memberId,
+          memberReference: 'M1',
+          start: start,
+          end: end,
+          trends: const ProgressTrends(
+            adherence: '0',
+            hydrationConsistency: '0',
+            mealRegularity: '0',
+            loggingConsistency: '0',
+            macroConsistency: '0',
+          ),
+          disclaimer: 'unreviewed estimates',
+        );
+  }
+
+  @override
+  Future<HouseholdProgress> householdProgress({
+    required String householdId,
+    required String start,
+    required String end,
+  }) async {
+    calls.add('householdProgress');
+    await Future<void>.delayed(delay ?? Duration.zero);
+    if (householdProgressFailure != null) throw householdProgressFailure!;
+    return householdProgress_ ??
+        HouseholdProgress(
+          householdId: householdId,
+          start: start,
+          end: end,
+          disclaimer: 'unreviewed estimates',
+        );
+  }
+
+  @override
+  Future<RecoveryProposal?> proposeRecovery({
+    required String memberId,
+    required String date,
+  }) async {
+    writes.add('proposeRecovery:$memberId');
+    await Future<void>.delayed(delay ?? Duration.zero);
+    return recoveries.isEmpty ? null : recoveries.first;
+  }
+
+  @override
+  Future<List<RecoveryProposal>> recoveryProposals({
+    required String memberId,
+  }) async {
+    calls.add('recoveryProposals');
+    await Future<void>.delayed(delay ?? Duration.zero);
+    if (recoveryFailure != null) throw recoveryFailure!;
+    return recoveries;
+  }
+
+  @override
+  Future<RecoveryProposal> decideRecovery({
+    required String proposalId,
+    required String decision,
+    String note = '',
+  }) async {
+    writes.add('decideRecovery:$proposalId:$decision');
+    await Future<void>.delayed(delay ?? Duration.zero);
+    if (decideRecoveryFailure != null) throw decideRecoveryFailure!;
+    recoveries = const [];
+    return RecoveryProposal(
+      id: proposalId,
+      memberId: 'm1',
+      trigger: 'skipped_meals',
+      triggerDate: '2026-03-01',
+      status: decision == 'accept' ? 'accepted' : '${decision}d',
+      floorKcal: '1200.00',
+      ceilingKcal: '2400.00',
+      shortfallKcal: '600.00',
+      redistributedKcal: '150.00',
+      unrecoveredKcal: '450.00',
+      rationale: 'decided',
+    );
   }
 }
 

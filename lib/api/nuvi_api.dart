@@ -119,6 +119,90 @@ abstract class NuviApi {
   /// The member profiles this account may see. Already scoped server-side, so
   /// the list is the answer rather than something to filter.
   Future<List<MembershipRef>> memberships();
+
+  // --- Phase 4: pantry, reminders, progress, recovery ---
+
+  Future<List<PantryItem>> pantryItems({required String householdId});
+
+  Future<PantryItem> addPantryItem({
+    required String householdId,
+    required String label,
+    required String quantity,
+    String unit,
+    String? bestBeforeOn,
+    String? expiresOn,
+  });
+
+  /// A signed change to one item's stock. `consumption` is not an accepted
+  /// reason here — a consumption row comes from confirming a deduction
+  /// proposal, and a client that could post one directly could deduct stock
+  /// for a meal nobody ate.
+  Future<PantryItem> adjustPantryItem({
+    required String itemId,
+    required String delta,
+    required String reason,
+  });
+
+  /// Required against on-hand for a household window.
+  Future<GroceryReconciliation> groceryReconciliation({
+    required String householdId,
+    required String start,
+    required String end,
+  });
+
+  /// Open deduction proposals. Each one is a question awaiting an answer.
+  Future<List<PantryDeductionProposal>> pantryDeductions({
+    required String householdId,
+  });
+
+  /// Confirm a proposal. The only call that deducts stock, and it exists
+  /// separately from logging a meal precisely so that a person has to make it.
+  Future<void> confirmPantryDeduction({required String proposalId});
+
+  Future<void> rejectPantryDeduction({required String proposalId});
+
+  Future<List<ReminderSchedule>> reminderSchedules({required String memberId});
+
+  /// Turn a schedule off. Never needs an approver — see `enableReminder`.
+  Future<ReminderSchedule> disableReminder({required String scheduleId});
+
+  /// Turn a schedule on. [approvedBy] is required by the server and there is
+  /// no call that omits it: enabling messaging for a person is an act with an
+  /// accountable name attached.
+  Future<ReminderSchedule> enableReminder({
+    required String scheduleId,
+    required String approvedBy,
+    String approvalReference,
+  });
+
+  Future<MemberProgress> memberProgress({
+    required String memberId,
+    required String start,
+    required String end,
+  });
+
+  Future<HouseholdProgress> householdProgress({
+    required String householdId,
+    required String start,
+    required String end,
+  });
+
+  /// Ask the server whether a day warrants a recovery draft.
+  ///
+  /// Returns null when it does not, which is the common case — the server
+  /// answers 204, and a screen that manufactured a proposal anyway would nag.
+  Future<RecoveryProposal?> proposeRecovery({
+    required String memberId,
+    required String date,
+  });
+
+  Future<List<RecoveryProposal>> recoveryProposals({required String memberId});
+
+  Future<RecoveryProposal> decideRecovery({
+    required String proposalId,
+    required String decision,
+    String note,
+  });
 }
 
 class HttpNuviApi implements NuviApi {
@@ -339,6 +423,205 @@ class HttpNuviApi implements NuviApi {
     return rows
         .map((row) => MembershipRef.fromJson(row as Map<String, dynamic>))
         .toList(growable: false);
+  }
+
+  @override
+  Future<List<PantryItem>> pantryItems({required String householdId}) async {
+    final payload =
+        await _send('GET', 'pantry-items/?household=$householdId')
+            as Map<String, dynamic>;
+    final rows = payload['results'] as List<dynamic>? ?? const [];
+    return rows
+        .map((row) => PantryItem.fromJson(row as Map<String, dynamic>))
+        .toList(growable: false);
+  }
+
+  @override
+  Future<PantryItem> addPantryItem({
+    required String householdId,
+    required String label,
+    required String quantity,
+    String unit = 'g',
+    String? bestBeforeOn,
+    String? expiresOn,
+  }) async {
+    final payload = await _send(
+      'POST',
+      'pantry-items/',
+      body: {
+        'household': householdId,
+        'label': label,
+        'quantity': quantity,
+        'unit': unit,
+        'best_before_on': ?bestBeforeOn,
+        'expires_on': ?expiresOn,
+      },
+    );
+    return PantryItem.fromJson(payload as Map<String, dynamic>);
+  }
+
+  @override
+  Future<PantryItem> adjustPantryItem({
+    required String itemId,
+    required String delta,
+    required String reason,
+  }) async {
+    final payload =
+        await _send(
+              'POST',
+              'pantry-items/$itemId/adjust/',
+              body: {'delta': delta, 'reason': reason},
+            )
+            as Map<String, dynamic>;
+    return PantryItem.fromJson(payload['item'] as Map<String, dynamic>);
+  }
+
+  @override
+  Future<GroceryReconciliation> groceryReconciliation({
+    required String householdId,
+    required String start,
+    required String end,
+  }) async {
+    final payload = await _send(
+      'GET',
+      'grocery-reconciliation/?household=$householdId&start=$start&end=$end',
+    );
+    return GroceryReconciliation.fromJson(payload as Map<String, dynamic>);
+  }
+
+  @override
+  Future<List<PantryDeductionProposal>> pantryDeductions({
+    required String householdId,
+  }) async {
+    final payload =
+        await _send('GET', 'pantry-deductions/?household=$householdId&open=1')
+            as Map<String, dynamic>;
+    final rows = payload['results'] as List<dynamic>? ?? const [];
+    return rows
+        .map(
+          (row) =>
+              PantryDeductionProposal.fromJson(row as Map<String, dynamic>),
+        )
+        .toList(growable: false);
+  }
+
+  @override
+  Future<void> confirmPantryDeduction({required String proposalId}) async {
+    await _send('POST', 'pantry-deductions/$proposalId/confirm/', body: {});
+  }
+
+  @override
+  Future<void> rejectPantryDeduction({required String proposalId}) async {
+    await _send('POST', 'pantry-deductions/$proposalId/reject/', body: {});
+  }
+
+  @override
+  Future<List<ReminderSchedule>> reminderSchedules({
+    required String memberId,
+  }) async {
+    final payload =
+        await _send('GET', 'reminder-schedules/?member=$memberId')
+            as Map<String, dynamic>;
+    final rows = payload['results'] as List<dynamic>? ?? const [];
+    return rows
+        .map((row) => ReminderSchedule.fromJson(row as Map<String, dynamic>))
+        .toList(growable: false);
+  }
+
+  @override
+  Future<ReminderSchedule> disableReminder({required String scheduleId}) async {
+    final payload = await _send(
+      'POST',
+      'reminder-schedules/$scheduleId/disable/',
+      body: {},
+    );
+    return ReminderSchedule.fromJson(payload as Map<String, dynamic>);
+  }
+
+  @override
+  Future<ReminderSchedule> enableReminder({
+    required String scheduleId,
+    required String approvedBy,
+    String approvalReference = '',
+  }) async {
+    final payload = await _send(
+      'POST',
+      'reminder-schedules/$scheduleId/enable/',
+      body: {
+        'approved_by': approvedBy,
+        'approval_reference': approvalReference,
+      },
+    );
+    return ReminderSchedule.fromJson(payload as Map<String, dynamic>);
+  }
+
+  @override
+  Future<MemberProgress> memberProgress({
+    required String memberId,
+    required String start,
+    required String end,
+  }) async {
+    final payload = await _send(
+      'GET',
+      'progress/?member=$memberId&start=$start&end=$end',
+    );
+    return MemberProgress.fromJson(payload as Map<String, dynamic>);
+  }
+
+  @override
+  Future<HouseholdProgress> householdProgress({
+    required String householdId,
+    required String start,
+    required String end,
+  }) async {
+    final payload = await _send(
+      'GET',
+      'household-progress/?household=$householdId&start=$start&end=$end',
+    );
+    return HouseholdProgress.fromJson(payload as Map<String, dynamic>);
+  }
+
+  @override
+  Future<RecoveryProposal?> proposeRecovery({
+    required String memberId,
+    required String date,
+  }) async {
+    // 204 decodes to null: the day did not warrant a draft, which is not an
+    // error and must not be rendered as one.
+    final payload = await _send(
+      'POST',
+      'recovery-proposals/propose/',
+      body: {'member': memberId, 'date': date},
+    );
+    if (payload == null) return null;
+    return RecoveryProposal.fromJson(payload as Map<String, dynamic>);
+  }
+
+  @override
+  Future<List<RecoveryProposal>> recoveryProposals({
+    required String memberId,
+  }) async {
+    final payload =
+        await _send('GET', 'recovery-proposals/?member=$memberId&open=1')
+            as Map<String, dynamic>;
+    final rows = payload['results'] as List<dynamic>? ?? const [];
+    return rows
+        .map((row) => RecoveryProposal.fromJson(row as Map<String, dynamic>))
+        .toList(growable: false);
+  }
+
+  @override
+  Future<RecoveryProposal> decideRecovery({
+    required String proposalId,
+    required String decision,
+    String note = '',
+  }) async {
+    final payload = await _send(
+      'POST',
+      'recovery-proposals/$proposalId/$decision/',
+      body: {'note': note},
+    );
+    return RecoveryProposal.fromJson(payload as Map<String, dynamic>);
   }
 
   Future<Object?> _send(
