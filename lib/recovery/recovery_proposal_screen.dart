@@ -70,8 +70,16 @@ class _RecoveryProposalScreenState extends State<RecoveryProposalScreen> {
       _reload();
     } catch (error) {
       if (!mounted) return;
+      final failure = classifyFailure(error);
+      if (failure == RequestFailure.conflict) {
+        // A different decision already settled this proposal. Repeating the
+        // same decision returns 200 and reloads above; this is a conflicting
+        // one arriving late. Show the current state, not a false failure.
+        _reload();
+        return;
+      }
       setState(() {
-        _writeError = messageFor(classifyFailure(error));
+        _writeError = messageFor(failure);
         _pendingId = null;
       });
     }
