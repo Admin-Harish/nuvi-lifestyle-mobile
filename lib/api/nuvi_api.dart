@@ -34,6 +34,12 @@ class ApiException implements Exception {
   bool get isForbidden => statusCode == 403;
   bool get isThrottled => statusCode == 429;
 
+  /// The write conflicts with the current state: an idempotency key reused with
+  /// a different payload, or a decision made against an already-decided object.
+  /// Retrying the same request cannot resolve it — the state has moved on — so
+  /// the client shows the current state rather than a "please try again".
+  bool get isConflict => statusCode == 409;
+
   @override
   String toString() => 'ApiException($statusCode): $detail';
 }
@@ -124,10 +130,15 @@ abstract class NuviApi {
 
   Future<List<PantryItem>> pantryItems({required String householdId});
 
+  /// [idempotencyKey] is required, not optional — a creating write is exactly
+  /// the kind a phone on a bad connection retries, and without a key one tap
+  /// becomes two items. Generate one per logical action and keep it across an
+  /// explicit retry; see `daily_tracker_screen.dart` for the established shape.
   Future<PantryItem> addPantryItem({
     required String householdId,
     required String label,
     required String quantity,
+    required String idempotencyKey,
     String unit,
     String? bestBeforeOn,
     String? expiresOn,
@@ -137,10 +148,14 @@ abstract class NuviApi {
   /// reason here — a consumption row comes from confirming a deduction
   /// proposal, and a client that could post one directly could deduct stock
   /// for a meal nobody ate.
+  ///
+  /// [idempotencyKey] is required for the same reason as [addPantryItem]: a
+  /// retried adjust must land once, not twice.
   Future<PantryItem> adjustPantryItem({
     required String itemId,
     required String delta,
     required String reason,
+    required String idempotencyKey,
   });
 
   /// Required against on-hand for a household window.
@@ -441,6 +456,7 @@ class HttpNuviApi implements NuviApi {
     required String householdId,
     required String label,
     required String quantity,
+    required String idempotencyKey,
     String unit = 'g',
     String? bestBeforeOn,
     String? expiresOn,
@@ -453,6 +469,7 @@ class HttpNuviApi implements NuviApi {
         'label': label,
         'quantity': quantity,
         'unit': unit,
+        'idempotency_key': idempotencyKey,
         'best_before_on': ?bestBeforeOn,
         'expires_on': ?expiresOn,
       },
@@ -465,12 +482,17 @@ class HttpNuviApi implements NuviApi {
     required String itemId,
     required String delta,
     required String reason,
+    required String idempotencyKey,
   }) async {
     final payload =
         await _send(
               'POST',
               'pantry-items/$itemId/adjust/',
-              body: {'delta': delta, 'reason': reason},
+              body: {
+                'delta': delta,
+                'reason': reason,
+                'idempotency_key': idempotencyKey,
+              },
             )
             as Map<String, dynamic>;
     return PantryItem.fromJson(payload['item'] as Map<String, dynamic>);

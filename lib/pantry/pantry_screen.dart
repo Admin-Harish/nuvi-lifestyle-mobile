@@ -34,6 +34,15 @@ class _PantryScreenState extends State<PantryScreen> {
   String? _pendingItemId;
   String? _writeError;
 
+  /// One key per logical adjustment, kept across a retry of that same
+  /// adjustment and dropped only once it succeeds — the shape
+  /// `daily_tracker_screen.dart` established. Keyed by item *and* the change
+  /// itself: a retry of "-50 spoilage" reuses the key (the server absorbs the
+  /// duplicate), but a genuinely different change gets a fresh key so it is not
+  /// mistaken for a replay — and cannot be rejected as a payload conflict.
+  final Map<String, String> _idempotencyKeys = <String, String>{};
+  int _keyCounter = 0;
+
   @override
   void initState() {
     super.initState();
@@ -50,20 +59,32 @@ class _PantryScreenState extends State<PantryScreen> {
     });
   }
 
+  String _keyFor(String action) => _idempotencyKeys.putIfAbsent(
+    action,
+    () => '${widget.householdId}:$action:${_keyCounter++}',
+  );
+
   Future<void> _adjust(PantryItem item, String delta, String reason) async {
     setState(() {
       _pendingItemId = item.id;
       _writeError = null;
     });
+    final action = 'adjust:${item.id}:$delta:$reason';
     try {
       await widget.api.adjustPantryItem(
         itemId: item.id,
         delta: delta,
         reason: reason,
+        idempotencyKey: _keyFor(action),
       );
+      // Only now the write has landed: drop the key so an identical change made
+      // later is a new action, not a replay of this one.
+      _idempotencyKeys.remove(action);
       if (!mounted) return;
       _reload();
     } catch (error) {
+      // The key is deliberately kept: an explicit retry of this same adjustment
+      // must carry the same key so the server recognises it as one write.
       if (!mounted) return;
       setState(() {
         _writeError = messageFor(classifyFailure(error));

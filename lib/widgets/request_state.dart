@@ -31,6 +31,12 @@ enum RequestFailure {
   /// 401 or 403. The server declined; retrying will not help.
   refused,
 
+  /// 409. The write conflicts with the current state — a key reused with a
+  /// different payload, or a decision against an already-decided object.
+  /// Retrying the same request cannot win, so the screen shows current state
+  /// rather than inviting a retry.
+  conflict,
+
   /// Anything else.
   other,
 }
@@ -41,9 +47,11 @@ RequestFailure classifyFailure(Object? error) {
     return RequestFailure.offline;
   }
   if (error is ApiException) {
-    return error.isForbidden || error.isUnauthorized
-        ? RequestFailure.refused
-        : RequestFailure.other;
+    if (error.isForbidden || error.isUnauthorized) {
+      return RequestFailure.refused;
+    }
+    if (error.isConflict) return RequestFailure.conflict;
+    return RequestFailure.other;
   }
   return RequestFailure.other;
 }
@@ -55,6 +63,9 @@ String messageFor(RequestFailure failure) => switch (failure) {
   RequestFailure.refused =>
     'You do not have access to this. If that seems wrong, ask whoever manages '
         'your household.',
+  RequestFailure.conflict =>
+    'This was already updated, so nothing changed just now. The latest is '
+        'shown above.',
   RequestFailure.other =>
     'Something went wrong loading this. Please try again.',
   RequestFailure.none => '',
@@ -62,9 +73,10 @@ String messageFor(RequestFailure failure) => switch (failure) {
 
 /// A [FutureBuilder] that renders the four states consistently.
 ///
-/// [onRetry] is required for every failure except [RequestFailure.refused],
-/// where a retry button would invite somebody to hammer an endpoint that is
-/// never going to say yes.
+/// [onRetry] is required for every failure except [RequestFailure.refused] and
+/// [RequestFailure.conflict], where a retry button would invite somebody to
+/// hammer an endpoint that is never going to say yes (refused) or whose answer
+/// has already moved on (conflict).
 class NuviAsync<T> extends StatelessWidget {
   const NuviAsync({
     required this.future,
@@ -111,7 +123,8 @@ class NuviAsync<T> extends StatelessWidget {
                     ? Icons.cloud_off
                     : Icons.error_outline,
               ),
-              if (failure != RequestFailure.refused)
+              if (failure != RequestFailure.refused &&
+                  failure != RequestFailure.conflict)
                 NuviPrimaryButton(label: 'Try again', onPressed: onRetry),
             ],
           );

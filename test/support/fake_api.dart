@@ -80,7 +80,13 @@ class FakeNuviApi implements NuviApi {
   /// an unconfirmed proposal on it sent no deduction, which is the client half
   /// of the confirm gate.
   List<PantryItem> pantry = const [];
+
+  /// Thrown by [pantryItems] — a *load* failure.
   Object? pantryFailure;
+
+  /// Thrown by [adjustPantryItem] — a *write* failure, distinct from the load
+  /// so a test can fail an adjustment while the pantry still renders.
+  Object? adjustFailure;
   GroceryReconciliation? reconciliation_;
   Object? reconciliationFailure;
   List<PantryDeductionProposal> deductions = const [];
@@ -315,17 +321,25 @@ class FakeNuviApi implements NuviApi {
     return pantry;
   }
 
+  /// The idempotency key sent with each pantry create/adjust, in order. A
+  /// client test proves its half of the contract by asserting a retry reuses
+  /// the key and a genuinely new action does not.
+  final List<String> pantryWriteKeys = <String>[];
+
   @override
   Future<PantryItem> addPantryItem({
     required String householdId,
     required String label,
     required String quantity,
+    required String idempotencyKey,
     String unit = 'g',
     String? bestBeforeOn,
     String? expiresOn,
   }) async {
     writes.add('addPantryItem:$label');
+    pantryWriteKeys.add(idempotencyKey);
     await Future<void>.delayed(delay ?? Duration.zero);
+    if (adjustFailure != null) throw adjustFailure!;
     return PantryItem(
       id: 'new-item',
       displayName: label,
@@ -339,10 +353,12 @@ class FakeNuviApi implements NuviApi {
     required String itemId,
     required String delta,
     required String reason,
+    required String idempotencyKey,
   }) async {
     writes.add('adjust:$itemId:$delta:$reason');
+    pantryWriteKeys.add(idempotencyKey);
     await Future<void>.delayed(delay ?? Duration.zero);
-    if (pantryFailure != null) throw pantryFailure!;
+    if (adjustFailure != null) throw adjustFailure!;
     return PantryItem(
       id: itemId,
       displayName: 'adjusted',

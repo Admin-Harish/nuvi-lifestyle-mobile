@@ -70,8 +70,17 @@ class _DeductionConfirmScreenState extends State<DeductionConfirmScreen> {
       _reload();
     } catch (error) {
       if (!mounted) return;
+      final failure = classifyFailure(error);
+      if (failure == RequestFailure.conflict) {
+        // Someone already answered this proposal. A repeat of the *same* answer
+        // came back 200 and reloaded above; this is the *other* answer arriving
+        // late. Show the current state rather than a false failure — the
+        // proposal is settled and will drop from the list.
+        _reload();
+        return;
+      }
       setState(() {
-        _writeError = messageFor(classifyFailure(error));
+        _writeError = messageFor(failure);
         _pendingId = null;
       });
     }
